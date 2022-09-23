@@ -1,0 +1,2 @@
+# This file should contain the commands to append 4 bytes (used as RDMA CRC) at the end of packets.
+# Commands have been removed as they are under NDA
