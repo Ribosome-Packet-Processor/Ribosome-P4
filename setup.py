@@ -41,7 +41,8 @@ def run_pd_rpc(cmd_or_code, no_print=False):
 
     Note: do not attempt to run the tool in the interactive mode!
     """
-    import subprocess, RUN_PD_RPC_PATH
+    import subprocess
+    global RUN_PD_RPC_PATH
 
     command = [RUN_PD_RPC_PATH]
     if isinstance(cmd_or_code, str):
@@ -65,10 +66,10 @@ def run_pd_rpc(cmd_or_code, no_print=False):
 # This section creates a timer that calls a callback to dump and print port stats.
 # In particular, it dumps both RX/TX bps and pps from the NF server and from RDMA Server 1.
 tolog = {
-    '$OctetsTransmittedTotal': 'TX',
-    '$OctetsReceived': 'RX',
-    '$FramesReceivedAll': 'RXPPS',
-    '$FramesTransmittedAll': 'TXPPS'
+    b'$OctetsTransmittedTotal': 'TX',
+    b'$OctetsReceived': 'RX',
+    b'$FramesReceivedAll': 'RXPPS',
+    b'$FramesTransmittedAll': 'TXPPS'
 }
 last = {}
 last_srv = {}
@@ -82,32 +83,31 @@ start_ts = time.time()
 def dump_counters():
     global bfrt, last, last_srv, start_ts, time, tolog, NF_PORT, SERVER_1_PORT
 
-    port_stats = bfrt.port.port_stat.dump(from_hw=1, json=1)
-    port_stats = json.loads(port_stats)
+    port_stats = bfrt.port.port_stat.get(regex=True, print_ents=False)
 
     ts = time.time() - start_ts
 
-    nf_port_stats = list(filter(lambda x: x['key']['$DEV_PORT'] == NF_PORT, port_stats))[0]
+    nf_port_stats = list(filter(lambda x: x.key[b'$DEV_PORT'] == NF_PORT, port_stats))[0]
     for key, name in tolog.items():
-        val = nf_port_stats['data'][key]
+        val = nf_port_stats.data[key]
         diff = val - last[key]
         last[key] = val
         print("TOF-%f-RESULT-TOF%s %d" % (ts, name, diff))
 
-    rdma_server_stats = list(filter(lambda x: x['key']['$DEV_PORT'] == SERVER_1_PORT, port_stats))[0]
+    rdma_server_stats = list(filter(lambda x: x.key[b'$DEV_PORT'] == SERVER_1_PORT, port_stats))[0]
     for key, name in tolog.items():
-        val = rdma_server_stats['data'][key]
+        val = rdma_server_stats.data[key]
         diff = val - last_srv[key]
         last_srv[key] = val
         print("SRV1-%f-RESULT-SRV1%s %d" % (ts, name, diff))
 
 
-def counters_timer():
+def port_stats_timer():
     import threading
 
-    global counters_timer, dump_counters
+    global port_stats_timer, dump_counters
     dump_counters()
-    threading.Timer(1, counters_timer).start()
+    threading.Timer(1, port_stats_timer).start()
 
 
 ######################
@@ -116,31 +116,29 @@ def counters_timer():
 # This section creates a timer that calls a callback to restore disabled QPs.
 # In particular, it reads the enabled_qp register and filters out the entries with value = 0.
 # For each of such entries, it then set to 1 the relative entry in the restore_qp register.
+restore_qp_register = p4.restore_qp
+restore_qp_register.symmetric_mode_set(False)
 def set_restore_qp():
-    global p4, PIPE_NUM
+    global bfrt, p4, PIPE_NUM, restore_qp_register
 
     enabled_qp_register = p4.enabled_qp
-    restore_qp_register = p4.restore_qp
+    
     queue_pairs_register = p4.qp
 
-    enabled_qp_register_entries = enabled_qp_register.dump(from_hw=1, json=1)
-    if enabled_qp_register_entries is not None:
-        enabled_qp_register_entries = json.loads(enabled_qp_register_entries)
-        disabled_qps = list(filter(lambda x: x["data"]["enabled_qp.f1"][PIPE_NUM] == 0, enabled_qp_register_entries))
-        print("There are %d disabled QPs" % len(disabled_qps))
+    enabled_qp_register_entries = enabled_qp_register.get(regex=True, print_ents=False, from_hw=1)
+    disabled_qps = list(filter(lambda x: x.data[b"enabled_qp.f1"][PIPE_NUM] == 0, enabled_qp_register_entries))
+    print("There are %d disabled QPs" % len(disabled_qps))
 
-        if len(disabled_qps) > 0:
-            qp_register_entries = queue_pairs_register.dump(from_hw=1, json=1)
-            if qp_register_entries is not None:
-                qp_register_entries = json.loads(qp_register_entries)
+    if len(disabled_qps) > 0:
+        qp_register_entries = queue_pairs_register.get(regex=True, from_hw=1, print_ents=False)
+        bfrt.batch_begin()
+        for disabled_qp in disabled_qps:
+            register_idx = disabled_qp.key[b"$REGISTER_INDEX"]
+            qp_num = qp_register_entries[register_idx].data[b'qp.f1'][PIPE_NUM]
 
-            for disabled_qp in disabled_qps:
-                register_idx = disabled_qp["key"]["$REGISTER_INDEX"]
-                qp_num = qp_register_entries[register_idx]['data']['qp.f1'][PIPE_NUM]
-
-                if qp_num > 0:
-                    restore_qp_register.add(f1=1, REGISTER_INDEX=register_idx)
-
+            if qp_num > 0:
+                restore_qp_register.mod(f1=1, REGISTER_INDEX=register_idx, pipe=PIPE_NUM)
+        bfrt.batch_end()
 
 def restore_qp_timer():
     import threading
@@ -169,52 +167,37 @@ def disable_overloaded_servers():
     global bfrt, p4, NUMBER_OF_SERVERS, MAX_QP_NUM, SERVER_PORT_TO_IDX, PORT_THRESHOLD, prev_port_rate, \
         active_server_indexes
 
-    port_stats = bfrt.port.port_stat.dump(from_hw=1, json=1)
-    port_stats = json.loads(port_stats)
+    port_stats = bfrt.port.port_stat.get(regex=True, print_ents=False)
 
     qp_mapping_sel = p4.Ingress.qp_mapping_sel
-    # qp_mapping_table = p4.Ingress.qp_mapping
 
-    servers_port_stats = list(filter(lambda x: x['key']['$DEV_PORT'] in SERVER_PORT_TO_IDX.keys(), port_stats))
+    selector_entry = qp_mapping_sel.get(SELECTOR_GROUP_ID=1, print_ents=False, from_hw=1)
+    servers_port_stats = list(filter(lambda x: x.key[b'$DEV_PORT'] in SERVER_PORT_TO_IDX.keys(), port_stats))
     for stats in servers_port_stats:
-        server_port = stats['key']['$DEV_PORT']
+        server_port = stats.key[b'$DEV_PORT']
         server_idx = SERVER_PORT_TO_IDX[server_port]
-
-        current_rate = stats['data']['$OctetsTransmittedTotal']
+        
+        current_rate = stats.data[b'$OctetsTransmittedTotal']
         if prev_port_rate[server_port] <= 0:
             continue
-
+        
         port_bps = (current_rate - prev_port_rate[server_port]) * 8
         if port_bps > PORT_THRESHOLD:
             if server_idx in active_server_indexes:
                 print(f"Server {server_idx} overloaded.")
                 active_server_indexes.remove(server_idx)
-
-                qp_mapping_profile.mod_with_to_qp_and_server(
-                    qp=offset_qp_idx, selected_qp=new_qp_idx, selected_server=active_server_indexes[i]
-                )
-
-                if len(active_server_indexes) > 0:
-                    i = 0
-                    for qp_idx in range(MAX_QP_NUM):
-                        offset_qp_idx = qp_idx + (MAX_QP_NUM * server_idx)
-
-                        new_qp_idx = qp_idx + (MAX_QP_NUM * active_server_indexes[i])
-                        qp_mapping_table.mod_with_to_qp_and_server(
-                            qp=offset_qp_idx, selected_qp=new_qp_idx, selected_server=active_server_indexes[i]
-                        )
-                        i = (i + 1) if i < len(active_server_indexes) - 1 else 0
+                for qp_idx in range(MAX_QP_NUM):
+                    offset_qp_idx = qp_idx + (MAX_QP_NUM * server_idx)
+                    selector_entry.data[b'$ACTION_MEMBER_STATUS'][offset_qp_idx] = False
         elif port_bps < PORT_THRESHOLD - 5000000000:
             if server_idx not in active_server_indexes:
-                print(f"Server {server_idx} restored.")
                 active_server_indexes.append(server_idx)
                 for qp_idx in range(MAX_QP_NUM):
                     offset_qp_idx = qp_idx + (MAX_QP_NUM * server_idx)
-                    qp_mapping_table.mod_with_to_qp_and_server(
-                        qp=offset_qp_idx, selected_qp=offset_qp_idx, selected_server=server_idx
-                    )
-
+                    selector_entry.data[b'$ACTION_MEMBER_STATUS'][offset_qp_idx] = True
+                print(f"Server {server_idx} restored.")
         prev_port_rate[server_port] = current_rate
+    selector_entry.push()
 
 
 def overloaded_servers_timer():
@@ -318,7 +301,17 @@ def setup_blacklist_table():
     blacklist_table.add_with_drop(dst_addr=ip_address('224.0.0.0'), dst_addr_p_length=16)
     blacklist_table.add_with_send(dst_addr=ip_address('10.0.0.1'), dst_addr_p_length=32, port=0)
 
-
+############################
+##### RUN_PD_RPC SETUP #####
+############################
+lab_path = os.path.join(os.getcwd(), "run_pd_rpc/")
+run_pd_rpc(os.path.join(lab_path, "setup.py"))
+p = subprocess.Popen([os.path.join(os.environ['SDE'], "run_bfshell.sh"), '-f', os.path.join(lab_path, "access.txt")])
+try:
+    p.wait(3)
+except subprocess.TimeoutExpired:
+    p.kill()
+    
 #######################
 ##### TABLE SETUP #####
 #######################
@@ -331,16 +324,7 @@ setup_qp_mapping_table()
 ##### TIMERS SETUP #####
 ########################
 restore_qp_timer()
-# overloaded_servers_timer()
-counters_timer()  # Comment out to disable port stats
+overloaded_servers_timer()
+port_stats_timer()  # Comment out to disable port stats
 
-############################
-##### RUN_PD_RPC SETUP #####
-############################
-lab_path = os.path.join(os.getcwd(), "run_pd_rpc/")
-run_pd_rpc(os.path.join(lab_path, "setup.py"))
-p = subprocess.Popen([os.path.join(os.environ['SDE'], "run_bfshell.sh"), '-f', os.path.join(lab_path, "access.txt")])
-try:
-    p.wait(3)
-except subprocess.TimeoutExpired:
-    p.kill()
+
