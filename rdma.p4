@@ -4,8 +4,10 @@
 #include <tna.p4>
 
 #include "include/headers.p4"
-#include "include/parsers.p4"
 #include "include/registers.p4"
+
+#include "parsers/ingress_parser.p4"
+#include "parsers/egress_parser.p4"
 
 #include "ingress_controls/default_switch.p4"
 #include "ingress_controls/switch_to_nf.p4"
@@ -59,19 +61,6 @@ control Ingress(inout headers_t hdr, inout ig_metadata_t meta, in ingress_intrin
     RegisterAction<bit<16>, _, PortId_t>(server_port) server_port_read = {
         void apply(inout bit<16> value, out PortId_t read_value) {
             read_value = (PortId_t) value;
-        }
-    };
-
-    /* QP Index Read Action */
-    RegisterAction<bit<16>, _, bit<16>>(current_qp) current_qp_read = {
-        void apply(inout bit<16> value, out bit<16> read_value) {
-            read_value = value;
-
-            if (value == (TOTAL_QP - 1)) {
-                value = 0x0;
-            } else {
-                value = value + 1;
-            }
         }
     };
 
