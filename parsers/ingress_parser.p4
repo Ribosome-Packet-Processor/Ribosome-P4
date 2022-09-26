@@ -1,7 +1,7 @@
 #ifndef _INGRESS_PARSER_
 #define _INGRESS_PARSER_
 
-#include "configuration.p4"
+#include "../include/configuration.p4"
 
 parser IngressParser(packet_in pkt, out headers_t hdr, out ig_metadata_t meta, out ingress_intrinsic_metadata_t ig_intr_md) {
     /* This is a mandatory state, required by Tofino Architecture */

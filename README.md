@@ -2,7 +2,7 @@
 This repository contains the P4 implementation of Ribosome for Intel Tofino. 
 
 # Project Structure
-The main file is `rdma.p4`. It contains the implementation of the entire pipeline. 
+The main file is `ribosome.p4`. It contains the implementation of the entire pipeline. 
 
 The `ingress_controls` directory contains all the controls that Ribosome uses in the `Ingress` pipeline. 
 

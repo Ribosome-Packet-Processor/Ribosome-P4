@@ -1,7 +1,7 @@
 #ifndef _EGRESS_PARSER_
 #define _EGRESS_PARSER_
 
-#include "configuration.p4"
+#include "../include/configuration.p4"
 
 /* EGRESS */
 parser EgressParser(packet_in pkt, out headers_t hdr, out eg_metadata_t meta, out egress_intrinsic_metadata_t eg_intr_md) {

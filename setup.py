@@ -1,9 +1,9 @@
-import time
 import json
 import os
 import subprocess
+import time
 
-p4 = bfrt.rdma.pipe
+p4 = bfrt.ribosome.pipe
 
 # Pipe where Ribosome is running
 PIPE_NUM = 0
@@ -118,11 +118,13 @@ def port_stats_timer():
 # For each of such entries, it then set to 1 the relative entry in the restore_qp register.
 restore_qp_register = p4.restore_qp
 restore_qp_register.symmetric_mode_set(False)
+
+
 def set_restore_qp():
     global bfrt, p4, PIPE_NUM, restore_qp_register
 
     enabled_qp_register = p4.enabled_qp
-    
+
     queue_pairs_register = p4.qp
 
     enabled_qp_register_entries = enabled_qp_register.get(regex=True, print_ents=False, from_hw=1)
@@ -139,6 +141,7 @@ def set_restore_qp():
             if qp_num > 0:
                 restore_qp_register.mod(f1=1, REGISTER_INDEX=register_idx, pipe=PIPE_NUM)
         bfrt.batch_end()
+
 
 def restore_qp_timer():
     import threading
@@ -176,11 +179,11 @@ def disable_overloaded_servers():
     for stats in servers_port_stats:
         server_port = stats.key[b'$DEV_PORT']
         server_idx = SERVER_PORT_TO_IDX[server_port]
-        
+
         current_rate = stats.data[b'$OctetsTransmittedTotal']
         if prev_port_rate[server_port] <= 0:
             continue
-        
+
         port_bps = (current_rate - prev_port_rate[server_port]) * 8
         if port_bps > PORT_THRESHOLD:
             if server_idx in active_server_indexes:
@@ -301,17 +304,18 @@ def setup_blacklist_table():
     blacklist_table.add_with_drop(dst_addr=ip_address('224.0.0.0'), dst_addr_p_length=16)
     blacklist_table.add_with_send(dst_addr=ip_address('10.0.0.1'), dst_addr_p_length=32, port=0)
 
+
 ############################
 ##### RUN_PD_RPC SETUP #####
 ############################
-lab_path = os.path.join(os.getcwd(), "run_pd_rpc/")
+lab_path = os.path.join(os.environ['HOME'], "labs/Ribosome-P4/run_pd_rpc/")
 run_pd_rpc(os.path.join(lab_path, "setup.py"))
 p = subprocess.Popen([os.path.join(os.environ['SDE'], "run_bfshell.sh"), '-f', os.path.join(lab_path, "access.txt")])
 try:
     p.wait(3)
 except subprocess.TimeoutExpired:
     p.kill()
-    
+
 #######################
 ##### TABLE SETUP #####
 #######################
@@ -326,5 +330,3 @@ setup_qp_mapping_table()
 restore_qp_timer()
 overloaded_servers_timer()
 port_stats_timer()  # Comment out to disable port stats
-
-
