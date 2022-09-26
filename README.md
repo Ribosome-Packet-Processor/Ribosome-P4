@@ -1,12 +1,16 @@
 # Ribosome-P4
 This repository contains the P4 implementation of Ribosome for Intel Tofino. 
 
+This implementation is tested with **SDE 9.7.0**.
+
 # Project Structure
 The main file is `ribosome.p4`. It contains the implementation of the entire pipeline. 
 
 The `ingress_controls` directory contains all the controls that Ribosome uses in the `Ingress` pipeline. 
 
 The `egress_controls` directory contains all the controls that Ribosome uses in the `Egress` pipeline. 
+
+The `parsers` directory contains both the Ingress Parser/Deparser and Egress Parser/Deparser.
 
 The `include` directory contains parser and configuration files. 
 
@@ -15,22 +19,41 @@ The `run_pd_rpc` directory contains Python scripts for the control plane.
 # How to Build
 To build the code: 
 ```bash 
-./p4_build.sh -DSPLIT=128 ~/labs/Ribosome-p4/ribosome.p4 #Do not split packets with "lenght <= SPLIT"
+./p4_build.sh -DSPLIT=128 ~/labs/Ribosome-p4/ribosome.p4 # Do not split packets with "length <= SPLIT"
 ```
 You can specify the `split threshold` modifying the value of `SPLIT`. This parameter set the threshold under which 
-Ribosome does not split the packets. The threshold is expressed in `Byte`. 
+Ribosome does not split the packets. The threshold is expressed in bytes. 
+
+You can add a custom split threshold by editing the `parsers/ingress_parser.p4` file, in the `check_ip_len` state.
+
+# Requirements 
+
+Before running Ribosome code, you need to fill the `run_pd_rpc/access.txt` file with the commands to append 4 bytes at the end of packets.
+In this repository, commands have been removed as they are under NDA.
 
 # Add/Remove RDMA servers
 This implementation of Ribosome leverages on RDMA servers as external buffers for payloads. 
 
 The number of RDMA servers is set to 4. 
-To add or remove servers you have to: 
+To add or remove servers, you have to: 
 
-1. Edit the `include/configuration.p4` file, specifying the number of desired servers: 
+1. Edit the `include/configuration.p4` file, specifying the number of desired servers, for example: 
     ```p4
     #define NUMBER_OF_SERVERS 3 
     ```
-2. Recompile the p4 code. 
+2. Recompile the P4 code. 
+
+# Set Queue-Pairs numbers
+
+This implementation of Ribosome leverages on 32 Queue-Pairs for each RDMA server connection.
+
+To change the number of Queue-Pairs, you have to:
+
+1. Edit the `include/configuration.p4` file, specifying the number of desired QPs, for example:
+    ```p4
+    #define MAX_QP_NUM 16
+    ```
+2. Recompile the P4 code.
 
 # Specify how many bits should be sent to the NF
 You can set the number of bits to send to the NF. To do so, you have to: 
@@ -54,16 +77,16 @@ You can set the number of bits to send to the NF. To do so, you have to:
 # Configure the Ports
 You can find ports configuration in the `include/configuration.p4` file. Here you can set the port towards the NF and 
 the RDMA servers. 
-If you make changes, you need to update the ports value in the `run_pd_rpc/setup.py` file accordingly. 
+If you make changes, you need to update the ports value in the `run_pd_rpc/setup.py` and `setup.py` files accordingly. 
 
 The outport ports specified in the files are used to send out the traffic after being processed. 
 The current implementation sends out the packets selecting randomly one of the four output ports. 
 To modify this behaviour you can:
-1. Modify the sending rules of packets not split: editing the `ingress_control/default_switch` file.
+1. Modify the sending rules of packets not split: editing the `ingress_control/default_switch.p4` file.
 2. Modify the sending rules of reconstructed packets: editing the `ingress_control/packet_reconstruct.p4` file. 
 
 # Specify traffic classes to not split
-You can add entries from the `blacklist` table to disable payload splitting on specific traffic classes.
+You can add entries to the `blacklist` table to disable payload splitting on specific traffic classes.
 You can set up the `blacklist` table from the `setup.py` file:
 ```python3
 ###########################
