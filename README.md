@@ -28,7 +28,7 @@ You can add a custom split threshold by editing the `parsers/ingress_parser.p4` 
 
 # Requirements 
 
-Before running Ribosome code, you need to fill the `run_pd_rpc/access.txt` file with the commands to append 4 bytes at the end of packets.
+Before running Ribosome code, you need to fill the `run_pd_rpc/access.txt` file with the commands to append 4 bytes (used as RDMA iCRC) at the end of packets.
 In this repository, commands have been removed as they are under NDA.
 
 # Add/Remove RDMA servers
