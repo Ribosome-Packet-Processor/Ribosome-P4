@@ -7,7 +7,7 @@
 #define TOTAL_QP MAX_QP_NUM * NUMBER_OF_SERVERS
 
 /* Headers Configurations */
-#define HEADER_REGISTER_SIZE 65536
+#define HEADER_REGISTER_SIZE 2000
 #define PKT_MIN_LENGTH 71
 
 /* Port Numbers */

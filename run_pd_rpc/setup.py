@@ -16,43 +16,7 @@ def set_ports():
         pal.port_an_set(p, 1)
         pal.port_enable(p)
 
-
-def set_mirroring():
-    PKT_MIN_LENGTH = 71
-    HEADER_MIRROR_SESSION = 100
-    QP_REFRESH_MIRROR_SESSION = 200
-
-    print("Setting up Header Truncate Group %d -- Egress Port %d -- Truncate at %d bytes" %
-          (HEADER_MIRROR_SESSION, NF_PORT, PKT_MIN_LENGTH))
-
-    mirror.session_create(
-        mirror.MirrorSessionInfo_t(
-            mir_type=mirror.MirrorType_e.PD_MIRROR_TYPE_NORM,
-            direction=mirror.Direction_e.PD_DIR_BOTH,
-            mir_id=HEADER_MIRROR_SESSION,
-            egr_port=NF_PORT,
-            egr_port_v=True,
-            max_pkt_len=PKT_MIN_LENGTH
-        )
-    )
-
-    for session, port in enumerate(SERVER_PORTS):
-        print("Setting up QP Refresh Group %d -- Egress Port %d -- Truncate at %d bytes" %
-              (QP_REFRESH_MIRROR_SESSION + session, port, PKT_MIN_LENGTH))
-        mirror.session_create(
-            mirror.MirrorSessionInfo_t(
-                mir_type=mirror.MirrorType_e.PD_MIRROR_TYPE_NORM,
-                direction=mirror.Direction_e.PD_DIR_BOTH,
-                mir_id=QP_REFRESH_MIRROR_SESSION + session,
-                egr_port=port,
-                egr_port_v=True,
-                max_pkt_len=PKT_MIN_LENGTH
-            )
-        )
-
-
 increase_pool_size()
 set_ports()
-set_mirroring()
 
 conn_mgr.complete_operations()
