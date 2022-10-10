@@ -108,7 +108,7 @@ control Ingress(inout headers_t hdr, inout ig_metadata_t meta, in ingress_intrin
         current_server_idx = selected_server;
     }
 
-    Hash<bit<7>>(HashAlgorithm_t.CRC16) qp_mapping_hash;
+    Hash<bit<8>>(HashAlgorithm_t.CRC16) qp_mapping_hash;
     ActionProfile(size=TOTAL_QP) qp_mapping_profile;
     ActionSelector(
         action_profile = qp_mapping_profile,

@@ -2,7 +2,7 @@
 #define _CONFIGURATION_
 
 /* Servers Configurations */
-#define MAX_QP_NUM 32
+#define MAX_QP_NUM 64
 #define NUMBER_OF_SERVERS 4
 #define TOTAL_QP MAX_QP_NUM * NUMBER_OF_SERVERS
 

@@ -22,7 +22,7 @@ SERVER_PORT_TO_IDX = {
 }
 
 # Queue Pairs and Servers information
-MAX_QP_NUM = 32
+MAX_QP_NUM = 64
 NUMBER_OF_SERVERS = 4
 TOTAL_QP = MAX_QP_NUM * NUMBER_OF_SERVERS
 
