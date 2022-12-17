@@ -102,7 +102,7 @@ You can set the number of bytes to send to the NF. To do so, you have to:
     # Other NUMBER_OF_SERVERS are used to send QP Refresh Packets to the proper RDMA server.
     PKT_MIN_LENGTH = 71
     ```
-3. Recompile the p4 code.
+3. Recompile the P4 code.
 
 ### Configure the Ports
 You can find ports configuration in the `include/configuration.p4` file. Here you can set the port towards the NF and 
@@ -114,6 +114,8 @@ The current implementation sends out the packets selecting randomly one of the f
 To modify this behaviour you can:
 1. Modify the sending rules of packets not split: editing the `ingress_control/default_switch.p4` file.
 2. Modify the sending rules of reconstructed packets: editing the `ingress_control/packet_reconstruct.p4` file. 
+
+:warning: If you add a new server, you also have to update the `SERVER_PORT_TO_IDX` dict in the `setup.py` file, specifying which Server IDX should be used to send QP Restore packets towards that server. More information about the Server IDX can be found in the [RDMA Server Agent repository](https://github.com/Ribosome-Packet-Processor/Ribosome-RDMA-Server-Agent).
 
 ### Specify traffic classes to not split
 You can add entries to the `blacklist` table to disable payload splitting on specific traffic classes.
