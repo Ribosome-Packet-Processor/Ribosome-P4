@@ -157,49 +157,56 @@ def restore_qp_timer():
 # This section creates a timer that calls a callback that check RDMA servers links bandwidth utilization.
 # When a link carries above a user-configured back-off RDMA threshold (PORT_THRESHOLD),
 # the system stops sending payloads to the overloaded server.
-PORT_THRESHOLD = 50000000000  # 50Gbps
+PORT_THRESHOLD = 95000000000  # 95Gbps
 
 prev_port_rate = {
     key: 0 for key in SERVER_PORT_TO_IDX.keys()
 }
 
-active_server_indexes = list(SERVER_PORT_TO_IDX.values())
+active_server_indexes = set(SERVER_PORT_TO_IDX.values())
 
 
 def disable_overloaded_servers():
     global bfrt, p4, NUMBER_OF_SERVERS, MAX_QP_NUM, SERVER_PORT_TO_IDX, PORT_THRESHOLD, prev_port_rate, \
         active_server_indexes
 
-    port_stats = bfrt.port.port_stat.get(regex=True, print_ents=False)
+    servers_port_stats = filter(
+        lambda x: x.key[b'$DEV_PORT'] in SERVER_PORT_TO_IDX.keys(), 
+        bfrt.port.port_stat.get(regex=True, print_ents=False)
+    )   
 
-    qp_mapping_sel = p4.Ingress.qp_mapping_sel
+    selector_entry = p4.Ingress.qp_mapping_sel.get(SELECTOR_GROUP_ID=1, print_ents=False, from_hw=1)
 
-    selector_entry = qp_mapping_sel.get(SELECTOR_GROUP_ID=1, print_ents=False, from_hw=1)
-    servers_port_stats = list(filter(lambda x: x.key[b'$DEV_PORT'] in SERVER_PORT_TO_IDX.keys(), port_stats))
     for stats in servers_port_stats:
-        server_port = stats.key[b'$DEV_PORT']
+        server_port = int(stats.key[b'$DEV_PORT'])
         server_idx = SERVER_PORT_TO_IDX[server_port]
 
         current_rate = stats.data[b'$OctetsTransmittedTotal']
-        if prev_port_rate[server_port] <= 0:
-            continue
+        if prev_port_rate[server_port] > 0:
+            port_bps = (current_rate - prev_port_rate[server_port]) * 8
+            if port_bps > PORT_THRESHOLD:
+                if server_idx in active_server_indexes:
+                    print(f"Server {server_idx} overloaded.")
 
-        port_bps = (current_rate - prev_port_rate[server_port]) * 8
-        if port_bps > PORT_THRESHOLD:
-            if server_idx in active_server_indexes:
-                print(f"Server {server_idx} overloaded.")
-                active_server_indexes.remove(server_idx)
-                for qp_idx in range(MAX_QP_NUM):
-                    offset_qp_idx = qp_idx + (MAX_QP_NUM * server_idx)
-                    selector_entry.data[b'$ACTION_MEMBER_STATUS'][offset_qp_idx] = False
-        elif port_bps < PORT_THRESHOLD - 5000000000:
-            if server_idx not in active_server_indexes:
-                active_server_indexes.append(server_idx)
-                for qp_idx in range(MAX_QP_NUM):
-                    offset_qp_idx = qp_idx + (MAX_QP_NUM * server_idx)
-                    selector_entry.data[b'$ACTION_MEMBER_STATUS'][offset_qp_idx] = True
-                print(f"Server {server_idx} restored.")
+                    active_server_indexes.remove(server_idx)
+                    for qp_idx in range(MAX_QP_NUM):
+                        offset_qp_idx = qp_idx + (MAX_QP_NUM * server_idx)
+                        selector_entry.data[b'$ACTION_MEMBER_STATUS'][offset_qp_idx] = False
+
+                    # You cannot push a selector entry with all entries to false, so keep one entry alive
+                    if not any(selector_entry.data[b'$ACTION_MEMBER_STATUS']):
+                        selector_entry.data[b'$ACTION_MEMBER_STATUS'][(MAX_QP_NUM * server_idx)] = True
+            elif port_bps < PORT_THRESHOLD - 5000000000:
+                if server_idx not in active_server_indexes:
+                    active_server_indexes.add(server_idx)
+                    for qp_idx in range(MAX_QP_NUM):
+                        offset_qp_idx = qp_idx + (MAX_QP_NUM * server_idx)
+                        selector_entry.data[b'$ACTION_MEMBER_STATUS'][offset_qp_idx] = True
+
+                    print(f"Server {server_idx} restored.")
+
         prev_port_rate[server_port] = current_rate
+
     selector_entry.push()
 
 
