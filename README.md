@@ -7,6 +7,8 @@ This implementation is tested with **SDE 9.7.0**.
 
 The main file is `ribosome.p4`. It contains the implementation of the entire pipeline. 
 
+The file `setup.py` contains a `bfrt_python` script that configures several callbacks for the program.
+
 The `ingress_controls` directory contains all the controls that Ribosome uses in the `Ingress` pipeline. 
 
 The `egress_controls` directory contains all the controls that Ribosome uses in the `Egress` pipeline. 
@@ -19,9 +21,9 @@ The `run_pd_rpc` directory contains Python scripts for the control plane.
 
 ## How to Build
 
-To build the code: 
+Example command to build the code, it can vary depending on your SDE installation: 
 ```bash 
-./p4_build.sh -DSPLIT=128 ~/labs/Ribosome-p4/ribosome.p4 # Do not split packets with "length <= SPLIT"
+./p4_build.sh -DSPLIT=128 ribosome.p4 # Do not split packets with "length <= SPLIT"
 ```
 You can specify the `split threshold` modifying the value of `SPLIT`. This parameter set the threshold under which 
 Ribosome does not split the packets. The threshold is expressed in bytes. 
@@ -32,6 +34,18 @@ You can add a custom split threshold by editing the `parsers/ingress_parser.p4` 
 
 Before running Ribosome code, you need to fill the `run_pd_rpc/access.txt` file with the commands to append 4 bytes (used as RDMA iCRC) at the end of packets.
 In this repository, commands have been removed as they are under NDA.
+
+## How to Run
+
+Example commands to run Ribosome, they can vary depending on your SDE installation.
+On a terminal, run `switchd`:
+```bash 
+$SDE/run_switchd.sh -p ribosome
+```
+On another terminal, launch the `setup.py` script using `bfshell`:
+```bash 
+$SDE/run_bfshell.sh -i -b /absolute/path/to/setup.py
+```
 
 ## How to Configure Ribosome
 
@@ -46,7 +60,11 @@ To add or remove servers, you have to:
     ```p4
     #define NUMBER_OF_SERVERS 3 
     ```
-2. Recompile the P4 code. 
+2. Edit the `NUMBER_OF_SERVERS` variable in the `setup.py` file, specifying the new number of desired servers:
+    ```python
+    NUMBER_OF_SERVERS = 3
+    ```
+3. Recompile the P4 code. 
 
 ### Set Queue-Pairs numbers
 
@@ -59,17 +77,21 @@ To change the number of Queue-Pairs, you have to:
     ```p4
     #define MAX_QP_NUM 16
     ```
-2. Recompile the P4 code.
+2. Edit the `MAX_QP_NUM` variable in the `setup.py` file, specifying the new number of desired QPs:
+    ```python
+    MAX_QP_NUM = 16
+    ```
+3. Recompile the P4 code.
 
-### Specify how many bits should be sent to the NF
-You can set the number of bits to send to the NF. To do so, you have to: 
+### Specify how many bytes should be sent to the NF
+You can set the number of bytes to send to the NF. To do so, you have to: 
 
-1. Edit the `include/configuration.p4` file, specifying the number of desired servers:
+1. Edit the `include/configuration.p4` file, specifying the length in bytes of the packet copy to send to the NF:
 
     ```p4
     #define PKT_MIN_LENGTH 71
     ```
-2. Edit the `setup.py` file, specifying the size of the `PKT_MIN_LENGTH` variable: 
+2. Edit the `setup.py` file, changing the `PKT_MIN_LENGTH` variable: 
 
     ```python3
     #################################
