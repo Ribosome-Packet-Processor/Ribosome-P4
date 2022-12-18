@@ -7,8 +7,6 @@ This implementation is tested with **SDE 9.7.0**.
 
 The main file is `ribosome.p4`. It contains the implementation of the entire pipeline. 
 
-The file `setup.py` contains a `bfrt_python` script that configures several callbacks for the program.
-
 The `ingress_controls` directory contains all the controls that Ribosome uses in the `Ingress` pipeline. 
 
 The `egress_controls` directory contains all the controls that Ribosome uses in the `Egress` pipeline. 
@@ -17,7 +15,7 @@ The `parsers` directory contains both the Ingress Parser/Deparser and Egress Par
 
 The `include` directory contains parser and configuration files. 
 
-The `run_pd_rpc` directory contains Python scripts for the control plane. 
+The file `setup.py` contains a `bfrt_python` script that configures ports, mirroring, and other several callbacks for the program.
 
 ## How to Build
 
@@ -32,7 +30,7 @@ You can add a custom split threshold by editing the `parsers/ingress_parser.p4` 
 
 ## Requirements 
 
-Before running Ribosome code, you need to fill the `run_pd_rpc/access.txt` file with the commands to append 4 bytes (used as RDMA iCRC) at the end of packets.
+Before running Ribosome code, you need to fill the `access.txt` file with the commands to append 4 bytes (used as RDMA iCRC) at the end of packets.
 In this repository, commands have been removed as they are under NDA.
 
 ## How to Run
@@ -107,10 +105,10 @@ You can set the number of bytes to send to the NF. To do so, you have to:
 ### Configure the Ports
 You can find ports configuration in the `include/configuration.p4` file. Here you can set the port towards the NF and 
 the RDMA servers. 
-If you make changes, you need to update the ports value in the `run_pd_rpc/setup.py` and `setup.py` files accordingly. 
+If you make changes, you need to update the ports value in the `setup.py` file accordingly. 
 
 The outport ports specified in the files are used to send out the traffic after being processed. 
-The current implementation sends out the packets selecting randomly one of the four output ports. 
+The current implementation sends out the packets randomly selecting one of the four output ports. 
 To modify this behaviour you can:
 1. Modify the sending rules of packets not split: editing the `ingress_control/default_switch.p4` file.
 2. Modify the sending rules of reconstructed packets: editing the `ingress_control/packet_reconstruct.p4` file. 
