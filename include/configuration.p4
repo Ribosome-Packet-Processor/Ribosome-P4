@@ -12,7 +12,6 @@
 
 /* Port Numbers */
 #define SERVER_1_PORT 0
-#define SERVER_1_EXTRA_PORT 4
 #define SERVER_2_PORT 20
 #define SERVER_3_PORT 16
 #define SERVER_4_PORT 32

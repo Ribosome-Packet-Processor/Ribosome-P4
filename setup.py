@@ -9,6 +9,10 @@ p4 = bfrt.ribosome.pipe
 PIPE_NUM = 0
 
 # Port defines
+OUTPUT_1_PORT = 48
+OUTPUT_2_PORT = 52
+OUTPUT_3_PORT = 44
+OUTPUT_4_PORT = 40
 NF_PORT = 36
 SERVER_1_PORT = 0
 SERVER_2_PORT = 20
@@ -26,38 +30,82 @@ MAX_QP_NUM = 64
 NUMBER_OF_SERVERS = 4
 TOTAL_QP = MAX_QP_NUM * NUMBER_OF_SERVERS
 
-# Path of the run_pd_rpc.py tool, should be changed to match local environment
-RUN_PD_RPC_PATH = os.path.join("/home", "tofino", "tools", "run_pd_rpc.py")
+# Path where the setup.py is located, change it accordingly.
+curr_path = os.path.join(os.environ['HOME'], "labs", "Ribosome-P4")
 
 
-def run_pd_rpc(cmd_or_code, no_print=False):
-    """
-    This function invokes run_pd_rpc.py tool. It has a single string argument
-    cmd_or_code that works as follows:
-       If it is a string:
-            * if the string starts with os.sep, then it is a filename
-            * otherwise it is a piece of code (passed via "--eval"
-       Else it is a list/tuple and it is passed "as-is"
+#################################
+########### PORT SETUP ##########
+#################################
+# In this section, we set up the ports used by Ribosome.
+def setup_ports():
+    global bfrt, OUTPUT_1_PORT, OUTPUT_2_PORT, OUTPUT_3_PORT, OUTPUT_4_PORT, NF_PORT, \
+        SERVER_1_PORT, SERVER_2_PORT, SERVER_3_PORT, SERVER_4_PORT
 
-    Note: do not attempt to run the tool in the interactive mode!
-    """
-    import subprocess
-    global RUN_PD_RPC_PATH
+    for port in [OUTPUT_1_PORT, OUTPUT_2_PORT, OUTPUT_3_PORT, OUTPUT_4_PORT, NF_PORT,
+                 SERVER_1_PORT, SERVER_2_PORT, SERVER_3_PORT, SERVER_4_PORT]:
+        print("Setting Output Port: %d" % port)
+        bfrt.port.port.add(DEV_PORT=port, SPEED='BF_SPEED_100G', FEC='BF_FEC_TYP_REED_SOLOMON', PORT_ENABLE=True)
 
-    command = [RUN_PD_RPC_PATH]
-    if isinstance(cmd_or_code, str):
-        if cmd_or_code.startswith(os.sep):
-            command.extend(["--no-wait", cmd_or_code])
-        else:
-            command.extend(["--no-wait", "--eval", cmd_or_code])
-    else:
-        command.extend(cmd_or_code)
 
-    result = subprocess.check_output(command).decode("utf-8")[:-1]
-    if not no_print:
-        print(result)
+#################################
+##### MIRROR SESSIONS TABLE #####
+#################################
+# In this section, we setup the mirror sessions of Ribosome.
+# One session is used to truncate/send the headers to the NF.
+# Other NUMBER_OF_SERVERS are used to send QP Refresh Packets to the proper RDMA server.
+PKT_MIN_LENGTH = 71
+HEADER_MIRROR_SESSION = 100
+QP_REFRESH_MIRROR_SESSION = 200
 
-    return result
+
+def setup_mirror_sessions_table():
+    global bfrt, NF_PORT, SERVER_PORT_TO_IDX, PKT_MIN_LENGTH, HEADER_MIRROR_SESSION, QP_REFRESH_MIRROR_SESSION
+
+    mirror_cfg = bfrt.mirror.cfg
+
+    print("Setting up Header Truncate Group %d -- Egress Port %d -- Truncate at %d bytes" %
+          (HEADER_MIRROR_SESSION, NF_PORT, PKT_MIN_LENGTH))
+
+    mirror_cfg.entry_with_normal(
+        sid=HEADER_MIRROR_SESSION,
+        direction="BOTH",
+        session_enable=True,
+        ucast_egress_port=NF_PORT,
+        ucast_egress_port_valid=1,
+        max_pkt_len=PKT_MIN_LENGTH
+    ).push()
+
+    for port, session in SERVER_PORT_TO_IDX.items():
+        print("Setting up QP Refresh Group %d -- Egress Port %d -- Truncate at %d bytes" %
+              (QP_REFRESH_MIRROR_SESSION + session, port, PKT_MIN_LENGTH))
+
+        mirror_cfg.entry_with_normal(
+            sid=QP_REFRESH_MIRROR_SESSION + session,
+            direction="BOTH",
+            session_enable=True,
+            ucast_egress_port=port,
+            ucast_egress_port_valid=1,
+            max_pkt_len=PKT_MIN_LENGTH
+        ).push()
+
+
+#################################
+##### TRAFFIC MANAGER POOLS #####
+#################################
+# In this section, we enlarge the TM buffer pools to the maximum available.
+def setup_tm_pools():
+    global bfrt
+
+    tm = bfrt.tf1.tm
+    tm.pool.app.mod_with_color_drop_enable(pool='EG_APP_POOL_0', green_limit_cells=20000000 // 80,
+                                           yellow_limit_cells=20000000 // 80, red_limit_cells=20000000 // 80)
+    tm.pool.app.mod_with_color_drop_enable(pool='IG_APP_POOL_0', green_limit_cells=20000000 // 80,
+                                           yellow_limit_cells=20000000 // 80, red_limit_cells=20000000 // 80)
+    tm.pool.app.mod_with_color_drop_enable(pool='EG_APP_POOL_1', green_limit_cells=20000000 // 80,
+                                           yellow_limit_cells=20000000 // 80, red_limit_cells=20000000 // 80)
+    tm.pool.app.mod_with_color_drop_enable(pool='IG_APP_POOL_1', green_limit_cells=20000000 // 80,
+                                           yellow_limit_cells=20000000 // 80, red_limit_cells=20000000 // 80)
 
 
 ######################
@@ -171,9 +219,9 @@ def disable_overloaded_servers():
         active_server_indexes
 
     servers_port_stats = filter(
-        lambda x: x.key[b'$DEV_PORT'] in SERVER_PORT_TO_IDX.keys(), 
+        lambda x: x.key[b'$DEV_PORT'] in SERVER_PORT_TO_IDX.keys(),
         bfrt.port.port_stat.get(regex=True, print_ents=False)
-    )   
+    )
 
     selector_entry = p4.Ingress.qp_mapping_sel.get(SELECTOR_GROUP_ID=1, print_ents=False, from_hw=1)
 
@@ -216,48 +264,6 @@ def overloaded_servers_timer():
     global overloaded_servers_timer, disable_overloaded_servers
     disable_overloaded_servers()
     threading.Timer(1, overloaded_servers_timer).start()
-
-
-#################################
-##### MIRROR SESSIONS TABLE #####
-#################################
-# In this section, we setup the mirror sessions of Ribosome.
-# One session is used to truncate/send the headers to the NF.
-# Other NUMBER_OF_SERVERS are used to send QP Refresh Packets to the proper RDMA server.
-PKT_MIN_LENGTH = 71
-HEADER_MIRROR_SESSION = 100
-QP_REFRESH_MIRROR_SESSION = 200
-
-
-def setup_mirror_sessions_table():
-    global bfrt, NF_PORT, SERVER_PORT_TO_IDX, PKT_MIN_LENGTH, HEADER_MIRROR_SESSION, QP_REFRESH_MIRROR_SESSION
-
-    mirror_cfg = bfrt.mirror.cfg
-
-    print("Setting up Header Truncate Group %d -- Egress Port %d -- Truncate at %d bytes" %
-          (HEADER_MIRROR_SESSION, NF_PORT, PKT_MIN_LENGTH))
-
-    mirror_cfg.entry_with_normal(
-        sid=HEADER_MIRROR_SESSION,
-        direction="BOTH",
-        session_enable=True,
-        ucast_egress_port=NF_PORT,
-        ucast_egress_port_valid=1,
-        max_pkt_len=PKT_MIN_LENGTH
-    ).push()
-
-    for port, session in SERVER_PORT_TO_IDX.items():
-        print("Setting up QP Refresh Group %d -- Egress Port %d -- Truncate at %d bytes" %
-              (QP_REFRESH_MIRROR_SESSION + session, port, PKT_MIN_LENGTH))
-
-        mirror_cfg.entry_with_normal(
-            sid=QP_REFRESH_MIRROR_SESSION + session,
-            direction="BOTH",
-            session_enable=True,
-            ucast_egress_port=port,
-            ucast_egress_port_valid=1,
-            max_pkt_len=PKT_MIN_LENGTH
-        ).push()
 
 
 ############################
@@ -312,22 +318,25 @@ def setup_blacklist_table():
     blacklist_table.add_with_send(dst_addr=ip_address('10.0.0.1'), dst_addr_p_length=32, port=0)
 
 
-############################
-##### RUN_PD_RPC SETUP #####
-############################
-lab_path = os.path.join(os.environ['HOME'], "labs/Ribosome-P4/run_pd_rpc/")
-run_pd_rpc(os.path.join(lab_path, "setup.py"))
-p = subprocess.Popen([os.path.join(os.environ['SDE'], "run_bfshell.sh"), '-f', os.path.join(lab_path, "access.txt")])
+##########################################
+##### RUN access.txt FILE IN bfshell #####
+##########################################
+p = subprocess.Popen([os.path.join(os.environ['SDE'], "run_bfshell.sh"), '-f', os.path.join(curr_path, "access.txt")])
 try:
     p.wait(3)
 except subprocess.TimeoutExpired:
     p.kill()
 
+######################################
+##### SETUP PORTS, TM AND MIRROR #####
+######################################
+setup_ports()
+setup_tm_pools()
+setup_mirror_sessions_table()
+
 #######################
 ##### TABLE SETUP #####
 #######################
-setup_mirror_sessions_table()
-
 setup_blacklist_table()
 setup_qp_mapping_table()
 

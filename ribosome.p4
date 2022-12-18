@@ -162,7 +162,7 @@ control Ingress(inout headers_t hdr, inout ig_metadata_t meta, in ingress_intrin
                 store_rdma_qp_info.apply(hdr);
 
                 /* Assign a port in order to move this packet on the egress */
-                ig_tm_md.ucast_egress_port = SERVER_1_EXTRA_PORT;
+                ig_tm_md.ucast_egress_port = SERVER_1_PORT;
             } else if (hdr.rdma_mem_info.isValid()) {
                 store_rdma_mem_info.apply(hdr);
 
