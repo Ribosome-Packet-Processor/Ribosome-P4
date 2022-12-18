@@ -23,8 +23,7 @@ Example command to build the code, it can vary depending on your SDE installatio
 ```bash 
 ./p4_build.sh -DSPLIT=128 ribosome.p4 # Do not split packets with "length <= SPLIT"
 ```
-You can specify the `split threshold` modifying the value of `SPLIT`. This parameter set the threshold under which 
-Ribosome does not split the packets. The threshold is expressed in bytes. 
+You can specify the split threshold modifying the value of `SPLIT`. This parameter sets the threshold under which Ribosome does not split the packets. The threshold is expressed in bytes. 
 
 You can add a custom split threshold by editing the `parsers/ingress_parser.p4` file, in the `check_ip_len` state.
 
